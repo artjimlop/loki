@@ -4,9 +4,11 @@ defmodule LokiWeb.ItemController do
   alias Loki.Storage
   alias Loki.Storage.Item
 
+  action_fallback(EathubWeb.FallbackController)
+
   def index(conn, _params) do
     items = Storage.list_items()
-    render(conn, "index.html", items: items)
+    render(conn, "index.json-api", data: items)
   end
 
   def new(conn, _params) do
@@ -15,25 +17,31 @@ defmodule LokiWeb.ItemController do
   end
 
   def create(conn, %{"item" => item_params}) do
-    case Storage.create_item(item_params) do
-      {:ok, item} ->
-        conn
-        |> put_flash(:info, "Item created successfully.")
-        |> redirect(to: item_path(conn, :show, item))
-      {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "new.html", changeset: changeset)
+    changeset = Item.changeset(%Item{}, item_params)
+
+    item_with_user =
+      Ecto.Changeset.put_assoc(changeset, :user, conn.private.guardian_default_resource)
+
+    with {:ok, item} <- Storage.create_item(item_with_user) do
+      conn
+      |> put_status(:created)
+      |> put_resp_header("location", api_item_path(conn, :show, item))
+      |> render("show.json-api", data: item)
     end
   end
 
   def show(conn, %{"id" => id}) do
     item = Storage.get_item!(id)
-    render(conn, "show.html", item: item)
+    render(conn, "show.json-api", data: item)
   end
 
   def edit(conn, %{"id" => id}) do
     item = Storage.get_item!(id)
-    changeset = Storage.change_item(item)
-    render(conn, "edit.html", item: item, changeset: changeset)
+
+    with {:ok, item} <- Storage.change_item(item) do
+      conn
+      |> render("show.json-api", data: item)
+    end
   end
 
   def update(conn, %{"id" => id, "item" => item_params}) do
@@ -42,8 +50,8 @@ defmodule LokiWeb.ItemController do
     case Storage.update_item(item, item_params) do
       {:ok, item} ->
         conn
-        |> put_flash(:info, "Item updated successfully.")
-        |> redirect(to: item_path(conn, :show, item))
+        |> render("show.json-api", data: item)
+
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "edit.html", item: item, changeset: changeset)
     end
@@ -54,7 +62,6 @@ defmodule LokiWeb.ItemController do
     {:ok, _item} = Storage.delete_item(item)
 
     conn
-    |> put_flash(:info, "Item deleted successfully.")
-    |> redirect(to: item_path(conn, :index))
+    |> send_resp(:no_content, "")
   end
 end

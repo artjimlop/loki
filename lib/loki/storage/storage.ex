@@ -19,6 +19,7 @@ defmodule Loki.Storage do
   """
   def list_items do
     Repo.all(Item)
+    |> Enum.map(fn item -> load_user(item) end)
   end
 
   @doc """
@@ -35,7 +36,7 @@ defmodule Loki.Storage do
       ** (Ecto.NoResultsError)
 
   """
-  def get_item!(id), do: Repo.get!(Item, id)
+  def get_item!(id), do: Repo.get!(Item, id) |> load_user
 
   @doc """
   Creates a item.
@@ -50,9 +51,20 @@ defmodule Loki.Storage do
 
   """
   def create_item(attrs \\ %{}) do
-    %Item{}
-    |> Item.changeset(attrs)
-    |> Repo.insert()
+    try do
+      Repo.transaction(fn ->
+        item = Repo.insert!(attrs)
+
+        Ecto.build_assoc(item, :user)
+        |> Repo.insert!()
+
+        item
+      end)
+    rescue
+      e ->
+        IO.inspect(e)
+        {:error, attrs}
+    end
   end
 
   @doc """
@@ -100,5 +112,9 @@ defmodule Loki.Storage do
   """
   def change_item(%Item{} = item) do
     Item.changeset(item, %{})
+  end
+
+  def load_user(recipe) do
+    Repo.preload(recipe, :user)
   end
 end

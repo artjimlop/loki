@@ -13,18 +13,37 @@ defmodule LokiWeb.Router do
     plug(:accepts, ["json"])
   end
 
-  scope "/", LokiWeb do
-    # Use the default browser stack
-    pipe_through(:browser)
-
-    get("/", PageController, :index)
-
-    resources("/users", UserController)
-    resources("/items", ItemController)
+  pipeline :auth do
+    plug(Loki.Accounts.Pipeline)
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", LokiWeb do
-  #   pipe_through :api
-  # end
+  pipeline :ensure_auth do
+    plug(Guardian.Plug.EnsureAuthenticated)
+    plug(Guardian.Plug.VerifyHeader, realm: "Bearer")
+    plug(Guardian.Plug.LoadResource)
+  end
+
+  scope "/api", LokiWeb, as: :api do
+    pipe_through([:api, :auth])
+
+    resources("/items", ItemController)
+
+    scope "/auth" do
+      get("/:provider", AuthController, :request)
+      get("/:provider/callback", AuthController, :callback)
+      post("/login", AuthController, :sign_in_user)
+      post("/signup", AuthController, :create_user)
+    end
+  end
+
+  # Definitely logged in scope
+  scope "/api", LokiWeb, as: :api do
+    pipe_through([:api, :auth, :ensure_auth])
+    resources("/users", UserController)
+    resources("/items", ItemController)
+
+    scope "/auth" do
+      post("/logout", AuthController, :delete)
+    end
+  end
 end

@@ -4,6 +4,8 @@ defmodule Loki.Storage.Item do
   alias Loki.Accounts.User
 
   @primary_key {:id, :binary_id, autogenerate: true}
+  @derive {Phoenix.Param, key: :id}
+  @foreign_key_type :binary_id
 
   schema "items" do
     field(:content, :string)
